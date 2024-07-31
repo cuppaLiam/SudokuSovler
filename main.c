@@ -2,16 +2,15 @@
 #include <stdbool.h>
 
 
-int sudokuInput[9][9] =  {{0,0,3,7,2,0,1,0,6},
-                          {0,0,0,0,0,0,5,3,0},
-                          {1,0,0,0,0,0,7,0,0},
-                          {7,0,8,6,0,0,0,0,0},
-                          {4,0,0,0,0,0,0,0,1},
-                          {0,6,0,0,0,8,0,0,0},
-                          {0,0,5,0,8,4,3,0,0},
-                          {0,0,0,0,1,0,0,8,0},
-                          {0,0,0,0,0,5,0,0,2}};
-
+int sudokuInput[9][9] =  {{3,0,0,1,0,0,8,0,5},
+                          {0,0,0,9,0,0,7,2,0},
+                          {0,0,6,0,0,0,0,0,0},
+                          {0,0,0,0,0,0,0,0,8},
+                          {0,2,0,4,8,7,0,0,0},
+                          {0,7,0,0,0,1,0,0,0},
+                          {2,3,0,0,0,0,0,0,0},
+                          {0,0,5,0,0,9,0,4,0},
+                          {4,0,0,0,0,0,2,0,1}};
 typedef struct Cell {
     int value;
     bool possibleValues[9];
@@ -174,50 +173,67 @@ void displayPossibleValues(Cell sudoku[9][9]){
 
 bool obvPairs(Cell unitCells[9]) {
     bool updated = false;
-    int occurrences[9] = {0};
 
-    // Count occurrences of each possible value in the unit
-    for (int count = 0; count < 9; count++) {
-        Cell* current_cell = &unitCells[count];
-        for (int posVal = 0; posVal < 9; posVal++) {
-            if (current_cell->possibleValues[posVal]) {
-                occurrences[posVal]++;
-            }
-        }
-    }
+    // Check for pairs, triples, and quads
+    for (int size = 2; size <= 4; size++) {
+        for (int i = 0; i < 9 - size + 1; i++) {
+            if (unitCells[i].value != 0) continue;
 
-    // Identify and process pairs and triplets
-    for (int posVal = 0; posVal < 9; posVal++) {
-        if (occurrences[posVal] == 2 || occurrences[posVal] == 3) {
-            Cell* cells[3] = {NULL, NULL, NULL};
-            int cellCount = 0;
+            int possibleValues[9] = {0};
+            int possibleCount = 0;
 
-            // Collect cells with the current possible value
-            for (int count = 0; count < 9; count++) {
-                if (unitCells[count].possibleValues[posVal]) {
-                    cells[cellCount++] = &unitCells[count];
+            // Count possible values for the first cell
+            for (int v = 0; v < 9; v++) {
+                if (unitCells[i].possibleValues[v]) {
+                    possibleValues[possibleCount++] = v;
                 }
             }
 
-            // Check if all collected cells have the same possible values
-            bool samePossibilities = true;
-            for (int i = 1; i < cellCount; i++) {
-                for (int j = 0; j < 9; j++) {
-                    if (cells[0]->possibleValues[j] != cells[i]->possibleValues[j]) {
-                        samePossibilities = false;
-                        break;
+            if (possibleCount == size) {
+                int matchCount = 1;
+                int matchIndices[4] = {i};
+
+                // Find cells with the same possible values
+                for (int j = i + 1; j < 9; j++) {
+                    if (unitCells[j].value != 0) continue;
+
+                    bool isMatch = true;
+                    int jPossibleCount = 0;
+                    for (int v = 0; v < 9; v++) {
+                        if (unitCells[j].possibleValues[v]) {
+                            jPossibleCount++;
+                            if (!unitCells[i].possibleValues[v]) {
+                                isMatch = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (isMatch && jPossibleCount == size) {
+                        matchIndices[matchCount++] = j;
+                        if (matchCount == size) break;
                     }
                 }
-                if (!samePossibilities) break;
-            }
 
-            if (samePossibilities) {
-                // Eliminate these values from other cells in the unit
-                for (int count = 0; count < 9; count++) {
-                    if (&unitCells[count] != cells[0] && &unitCells[count] != cells[1] && (cellCount == 2 || &unitCells[count] != cells[2])) {
-                        if (unitCells[count].possibleValues[posVal]) {
-                            unitCells[count].possibleValues[posVal] = false;
-                            updated = true;
+                // If we found a pair/triple/quad
+                if (matchCount == size) {
+                    // Remove these possible values from other cells
+                    for (int j = 0; j < 9; j++) {
+                        bool isMatch = false;
+                        for (int k = 0; k < size; k++) {
+                            if (j == matchIndices[k]) {
+                                isMatch = true;
+                                break;
+                            }
+                        }
+
+                        if (!isMatch && unitCells[j].value == 0) {
+                            for (int v = 0; v < possibleCount; v++) {
+                                if (unitCells[j].possibleValues[possibleValues[v]]) {
+                                    unitCells[j].possibleValues[possibleValues[v]] = false;
+                                    updated = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -227,6 +243,7 @@ bool obvPairs(Cell unitCells[9]) {
 
     return updated;
 }
+
 
 bool hidPairs(Cell unitCells[9]) {
     bool updated = false;
@@ -276,65 +293,6 @@ bool hidPairs(Cell unitCells[9]) {
     return updated;
 }
 
-
-
-
-bool pointing(Cell sudoku[9][9]) {
-    printf("\npointing function called");
-    bool updated = false;
-
-    for (int regRow = 0; regRow < 3; regRow++) {
-        for (int regCol = 0; regCol < 3; regCol++) {
-            // For each region
-            for (int posVal = 0; posVal < 9; posVal++) {
-                int rowOccurrences[3] = {0, 0, 0};
-                int colOccurrences[3] = {0, 0, 0};
-
-                // Check occurrences of posVal in the sub-grid
-                for (int subRow = 0; subRow < 3; subRow++) {
-                    for (int subCol = 0; subCol < 3; subCol++) {
-                        Cell current_cell = sudoku[(regRow * 3) + subRow][(regCol * 3) + subCol];
-                        if (current_cell.value == 0 && current_cell.possibleValues[posVal]) {
-                            rowOccurrences[subRow]++;
-                            colOccurrences[subCol]++;
-                        }
-                    }
-                }
-
-                // Eliminate possible values in rows
-                for (int subRow = 0; subRow < 3; subRow++) {
-                    if (rowOccurrences[subRow] > 0 && (rowOccurrences[(subRow + 1) % 3] == 0 && rowOccurrences[(subRow + 2) % 3] == 0)) {
-                        int row = (regRow * 3) + subRow;
-                        for (int col = 0; col < 9; col++) {
-                            if (col / 3 != regCol && sudoku[row][col].possibleValues[posVal]) {
-                                printf("\nUpdating possibleValues[%d] for cell [%d][%d]", posVal, row, col);
-                                sudoku[row][col].possibleValues[posVal] = false;
-                                updated = true;
-                            }
-                        }
-                    }
-                }
-
-                // Eliminate possible values in columns
-                for (int subCol = 0; subCol < 3; subCol++) {
-                    if (colOccurrences[subCol] > 0 && (colOccurrences[(subCol + 1) % 3] == 0 && colOccurrences[(subCol + 2) % 3] == 0)) {
-                        int col = (regCol * 3) + subCol;
-                        for (int row = 0; row < 9; row++) {
-                            if (row / 3 != regRow && sudoku[row][col].possibleValues[posVal]) {
-                                printf("\nUpdating possibleValues[%d] for cell [%d][%d]", posVal, row, col);
-                                sudoku[row][col].possibleValues[posVal] = false;
-                                updated = true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    return updated;
-}
-
 void solve(Cell sudoku[9][9]) {
     bool update_made;
     int itr = 0;
@@ -367,11 +325,24 @@ void solve(Cell sudoku[9][9]) {
             }
         } while (cell_solved);
 
-        // Process obvious pairs/triplets
+        // Process obvious pairs/triplets/quads
         for (int i = 0; i < 9; i++) {
-            if (obvPairs(sudoku[i])) update_made = true;      // Row
-            if (obvPairs(sudoku[i][0].colCells)) update_made = true; // Column
-            if (obvPairs(sudoku[i][0].regCells)) update_made = true; // Region
+            if (obvPairs(sudoku[i])) update_made = true;  // Row
+
+            Cell colCells[9];
+            Cell regCells[9];
+            for (int j = 0; j < 9; j++) {
+                colCells[j] = sudoku[j][i];
+                regCells[j] = sudoku[(i/3)*3 + j/3][(i%3)*3 + j%3];
+            }
+            if (obvPairs(colCells)) {
+                update_made = true;
+                for (int j = 0; j < 9; j++) sudoku[j][i] = colCells[j];
+            }
+            if (obvPairs(regCells)) {
+                update_made = true;
+                for (int j = 0; j < 9; j++) sudoku[(i/3)*3 + j/3][(i%3)*3 + j%3] = regCells[j];
+            }
         }
 
         // Process hidden pairs/triplets
@@ -381,24 +352,25 @@ void solve(Cell sudoku[9][9]) {
             if (hidPairs(sudoku[i][0].regCells)) update_made = true; // Region
         }
 
-
-        //?
-        if (!update_made) {
-            break;
-        }
-
-
-        // Process pointing function
-        bool pointing_updated = pointing(sudoku);
-        if (pointing_updated) {
+        /*
+        // Advanced pointing function
+        if (advancedPointing(sudoku)) {
             update_made = true;
         }
-        
+        if (boxLineReduction(sudoku)) {
+            update_made = true;
+        }
+        if (xWing(sudoku)) {
+            update_made = true;
+        }
+         */
+
 
         printf("\nUpdate made: %s", update_made ? "true" : "false");
 
     } while (update_made);
 }
+
 
 
 
