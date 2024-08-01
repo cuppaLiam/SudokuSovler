@@ -2,15 +2,17 @@
 #include <stdbool.h>
 
 
-int sudokuInput[9][9] =  {{8,0,0,0,0,0,0,0,0},
-                          {0,0,3,6,0,0,0,0,0},
-                          {0,7,0,0,9,0,2,0,0},
-                          {0,5,0,0,0,7,0,0,0},
-                          {0,0,0,0,4,5,7,0,0},
-                          {0,0,0,1,0,0,0,3,0},
-                          {0,0,1,0,0,0,0,6,8},
-                          {0,0,8,5,0,0,0,1,0},
-                          {0,9,0,0,0,0,4,0,0}};
+int sudokuInput[9][9] =  {{0,0,0,9,0,0,0,0,0},
+                          {0,0,0,0,5,7,0,0,0},
+                          {2,8,0,0,0,3,0,0,4},
+                          {0,9,0,0,7,0,0,0,1},
+                          {8,1,5,0,0,0,0,3,6},
+                          {0,0,0,0,0,0,0,0,0},
+                          {0,0,6,0,0,0,0,0,0},
+                          {0,7,3,0,9,6,0,4,0},
+                          {1,0,0,0,0,0,3,0,0}};
+
+
 typedef struct Cell {
     int value;
     bool possibleValues[9];
@@ -416,6 +418,279 @@ bool boxLineReduction(Cell sudoku[9][9]) {
     return updated;
 }
 
+//ADVANCED STUFF
+bool checkRestrictedCandidates(Cell sudoku[9][9], bool isRow, int index) {
+    bool updated = false;
+
+    for (int value = 0; value < 9; value++) {
+        int positions[9] = {0};
+        int count = 0;
+
+        for (int i = 0; i < 9; i++) {
+            if (sudoku[isRow ? index : i][isRow ? i : index].possibleValues[value]) {
+                positions[count++] = i;
+            }
+        }
+
+        if (count == 2 || count == 3) {
+            int region = positions[0] / 3;
+            bool sameRegion = true;
+            for (int i = 1; i < count; i++) {
+                if (positions[i] / 3 != region) {
+                    sameRegion = false;
+                    break;
+                }
+            }
+
+            if (sameRegion) {
+                // Remove this value from other cells in the same region
+                int startIdx = region * 3;
+                for (int i = startIdx; i < startIdx + 3; i++) {
+                    for (int j = 0; j < 3; j++) {
+                        int row = isRow ? index : (3 * (index / 3) + j);
+                        int col = isRow ? (3 * region + j) : index;
+                        if (sudoku[row][col].possibleValues[value]) {
+                            bool inPositions = false;
+                            for (int k = 0; k < count; k++) {
+                                if (isRow ? (col == positions[k]) : (row == positions[k])) {
+                                    inPositions = true;
+                                    break;
+                                }
+                            }
+                            if (!inPositions) {
+                                sudoku[row][col].possibleValues[value] = false;
+                                updated = true;
+                                printf("Removed %d from [%d][%d] due to restricted candidates\n", value + 1, row, col);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return updated;
+}
+
+bool restrictedCandidates(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    // Check rows
+    for (int row = 0; row < 9; row++) {
+        updated |= checkRestrictedCandidates(sudoku, true, row);
+    }
+
+    // Check columns
+    for (int col = 0; col < 9; col++) {
+        updated |= checkRestrictedCandidates(sudoku, false, col);
+    }
+
+    return updated;
+}
+
+bool nextCombination(int combination[], int size, int n) {
+    for (int i = size - 1; i >= 0; i--) {
+        if (combination[i] < n - size + i) {
+            combination[i]++;
+            for (int j = i + 1; j < size; j++) {
+                combination[j] = combination[j - 1] + 1;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+int countPossibleValues(Cell* cell) {
+    int count = 0;
+    for (int i = 0; i < 9; i++) {
+        if (cell->possibleValues[i]) {
+            count++;
+        }
+    }
+    return count;
+}
+
+void getPossibleValues(Cell* cell, int values[]) {
+    int index = 0;
+    for (int i = 0; i < 9; i++) {
+        if (cell->possibleValues[i]) {
+            values[index++] = i;
+        }
+    }
+}
+
+Cell* findPincer(Cell sudoku[9][9], Cell* pivot, int sharedValue, int uniqueValue) {
+    for (int row = 0; row < 9; row++) {
+        for (int col = 0; col < 9; col++) {
+            Cell* cell = &sudoku[row][col];
+            if (cell != pivot &&
+                ((cell->row == pivot->row) || (cell->col == pivot->col) ||
+                 (cell->row / 3 == pivot->row / 3 && cell->col / 3 == pivot->col / 3))) {
+                if (cell->possibleValues[sharedValue] && cell->possibleValues[uniqueValue] &&
+                    countPossibleValues(cell) == 2) {
+                    return cell;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+bool eliminateCommonValue(Cell sudoku[9][9], Cell* pincer1, Cell* pincer2, int commonValue) {
+    bool updated = false;
+    for (int row = 0; row < 9; row++) {
+        for (int col = 0; col < 9; col++) {
+            Cell* cell = &sudoku[row][col];
+            if (cell != pincer1 && cell != pincer2 &&
+                ((cell->row == pincer1->row && cell->col == pincer2->col) ||
+                 (cell->row == pincer2->row && cell->col == pincer1->col))) {
+                if (cell->possibleValues[commonValue]) {
+                    cell->possibleValues[commonValue] = false;
+                    updated = true;
+                    printf("Removed %d from [%d][%d] due to Y-Wing\n", commonValue + 1, row, col);
+                }
+            }
+        }
+    }
+    return updated;
+}
+
+
+bool checkFishPattern(Cell sudoku[9][9], bool checkRows, int size, int value) {
+    bool updated = false;
+    int candidateLines[9] = {0};
+    int lineCount = 0;
+
+    // Find candidate lines (rows or columns)
+    for (int i = 0; i < 9; i++) {
+        int count = 0;
+        for (int j = 0; j < 9; j++) {
+            if (sudoku[checkRows ? i : j][checkRows ? j : i].possibleValues[value]) {
+                count++;
+            }
+        }
+        if (count >= 2 && count <= size) {
+            candidateLines[lineCount++] = i;
+        }
+    }
+
+    // Check for fish pattern
+    if (lineCount >= size) {
+        int combinations[4] = {0};
+        for (int i = 0; i < size; i++) {
+            combinations[i] = i;
+        }
+
+        do {
+            int coveredLines[9] = {0};
+            int coveredCount = 0;
+
+            for (int i = 0; i < size; i++) {
+                int line = candidateLines[combinations[i]];
+                for (int j = 0; j < 9; j++) {
+                    if (sudoku[checkRows ? line : j][checkRows ? j : line].possibleValues[value]) {
+                        if (!coveredLines[j]) {
+                            coveredLines[j] = 1;
+                            coveredCount++;
+                        }
+                    }
+                }
+            }
+
+            if (coveredCount == size) {
+                // Fish pattern found, eliminate possibilities
+                for (int i = 0; i < 9; i++) {
+                    if (!coveredLines[i]) {
+                        for (int j = 0; j < size; j++) {
+                            int line = candidateLines[combinations[j]];
+                            if (sudoku[checkRows ? line : i][checkRows ? i : line].possibleValues[value]) {
+                                sudoku[checkRows ? line : i][checkRows ? i : line].possibleValues[value] = false;
+                                updated = true;
+                                printf("Removed %d from [%d][%d] due to %s\n",
+                                       value + 1,
+                                       checkRows ? line : i,
+                                       checkRows ? i : line,
+                                       size == 2 ? "X-Wing" : (size == 3 ? "Swordfish" : "Jellyfish"));
+                            }
+                        }
+                    }
+                }
+            }
+        } while (nextCombination(combinations, size, lineCount));
+    }
+
+    return updated;
+}
+
+bool generalizedFish(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    for (int size = 2; size <= 4; size++) { // 2 for X-Wing, 3 for Swordfish, 4 for Jellyfish
+        for (int value = 0; value < 9; value++) {
+            updated |= checkFishPattern(sudoku, true, size, value);  // Check rows
+            updated |= checkFishPattern(sudoku, false, size, value); // Check columns
+        }
+    }
+
+    return updated;
+}
+
+bool yWing(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    for (int pivotRow = 0; pivotRow < 9; pivotRow++) {
+        for (int pivotCol = 0; pivotCol < 9; pivotCol++) {
+            Cell* pivot = &sudoku[pivotRow][pivotCol];
+            if (countPossibleValues(pivot) == 2) {
+                int pivotValues[2];
+                getPossibleValues(pivot, pivotValues);
+
+                for (int pincerType = 0; pincerType < 2; pincerType++) {
+                    Cell* pincer1 = findPincer(sudoku, pivot, pivotValues[pincerType], pivotValues[1 - pincerType]);
+                    if (pincer1 != NULL) {
+                        Cell* pincer2 = findPincer(sudoku, pivot, pivotValues[1 - pincerType], pivotValues[pincerType]);
+                        if (pincer2 != NULL) {
+                            // Y-Wing found, eliminate common value from cells seeing both pincers
+                            int commonValue = pivotValues[pincerType];
+                            updated |= eliminateCommonValue(sudoku, pincer1, pincer2, commonValue);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return updated;
+}
+
+
+bool advancedElimination(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    // X-Wing, Swordfish, Jellyfish (generalized fish)
+    updated |= generalizedFish(sudoku);
+
+    // Y-Wing
+    updated |= yWing(sudoku);
+
+    // Restricted candidates in rows/columns
+    updated |= restrictedCandidates(sudoku);
+
+    return updated;
+}
+
+
+
+/* Helper functions (to be implemented)
+bool nextCombination(int combination[], int size, int n);
+int countPossibleValues(Cell* cell);
+void getPossibleValues(Cell* cell, int values[]);
+Cell* findPincer(Cell sudoku[9][9], Cell* pivot, int sharedValue, int uniqueValue);
+bool eliminateCommonValue(Cell sudoku[9][9], Cell* pincer1, Cell* pincer2, int commonValue);
+*/
+
+
 bool advancedPointing(Cell sudoku[9][9]) {
     bool updated = false;
 
@@ -623,6 +898,13 @@ void solve(Cell sudoku[9][9]) {
 
         if (boxLineReduction(sudoku)) {
             update_made = true;
+        }
+
+        // Advanced elimination
+        if (!update_made){
+            if (advancedElimination(sudoku)) {
+                update_made = true;
+            }
         }
 
 
