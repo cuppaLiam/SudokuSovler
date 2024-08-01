@@ -2,15 +2,15 @@
 #include <stdbool.h>
 
 
-int sudokuInput[9][9] =  {{3,0,0,1,0,0,8,0,5},
-                          {0,0,0,9,0,0,7,2,0},
-                          {0,0,6,0,0,0,0,0,0},
-                          {0,0,0,0,0,0,0,0,8},
-                          {0,2,0,4,8,7,0,0,0},
-                          {0,7,0,0,0,1,0,0,0},
-                          {2,3,0,0,0,0,0,0,0},
-                          {0,0,5,0,0,9,0,4,0},
-                          {4,0,0,0,0,0,2,0,1}};
+int sudokuInput[9][9] =  {{8,0,0,0,0,0,0,0,0},
+                          {0,0,3,6,0,0,0,0,0},
+                          {0,7,0,0,9,0,2,0,0},
+                          {0,5,0,0,0,7,0,0,0},
+                          {0,0,0,0,4,5,7,0,0},
+                          {0,0,0,1,0,0,0,3,0},
+                          {0,0,1,0,0,0,0,6,8},
+                          {0,0,8,5,0,0,0,1,0},
+                          {0,9,0,0,0,0,4,0,0}};
 typedef struct Cell {
     int value;
     bool possibleValues[9];
@@ -248,41 +248,72 @@ bool obvPairs(Cell unitCells[9]) {
 bool hidPairs(Cell unitCells[9]) {
     bool updated = false;
 
-    for (int first = 0; first < 8; first++) {
-        for (int second = first + 1; second < 9; second++) {
-            int count = 0;
-            Cell *pairCells[2] = {NULL, NULL};
-            int pairCount = 0;
+    // Check for pairs, triples, and quads
+    for (int size = 2; size <= 4; size++) {
+        // Track which cells contain each possible value
+        int valueLocations[9][9] = {0};  // [value][cell_index]
+        int valueCounts[9] = {0};        // Count of cells for each value
 
-            // Find cells where only 'first' and 'second' are possible
-            for (int cellIndex = 0; cellIndex < 9; cellIndex++) {
-                Cell *cell = &unitCells[cellIndex];
-                if (cell->possibleValues[first] && cell->possibleValues[second]) {
-                    // Check that these are the only possibilities for this cell
-                    bool validPair = true;
-                    for (int posVal = 0; posVal < 9; posVal++) {
-                        if (posVal != first && posVal != second && cell->possibleValues[posVal]) {
-                            validPair = false;
-                            break;
-                        }
-                    }
-                    if (validPair) {
-                        if (pairCount < 2) {
-                            pairCells[pairCount++] = cell;
-                        }
-                        count++;
+        // Count occurrences of each possible value
+        for (int i = 0; i < 9; i++) {
+            if (unitCells[i].value == 0) {  // Only check unsolved cells
+                for (int v = 0; v < 9; v++) {
+                    if (unitCells[i].possibleValues[v]) {
+                        valueLocations[v][valueCounts[v]++] = i;
                     }
                 }
             }
+        }
 
-            if (count == 2 && pairCount == 2) {
-                // We found exactly two cells with this hidden pair, clear other values
-                for (int posVal = 0; posVal < 9; posVal++) {
-                    if (posVal != first && posVal != second) {
-                        if (pairCells[0]->possibleValues[posVal] || pairCells[1]->possibleValues[posVal]) {
-                            pairCells[0]->possibleValues[posVal] = false;
-                            pairCells[1]->possibleValues[posVal] = false;
-                            updated = true;
+        // Check for hidden sets of the current size
+        for (int v1 = 0; v1 < 9; v1++) {
+            if (valueCounts[v1] == size) {
+                int setValues[4] = {v1};
+                int setCount = 1;
+                int setCells[4];
+                for (int i = 0; i < size; i++) {
+                    setCells[i] = valueLocations[v1][i];
+                }
+
+                // Find other values that appear only in these cells
+                for (int v2 = v1 + 1; v2 < 9; v2++) {
+                    if (valueCounts[v2] == size) {
+                        bool match = true;
+                        for (int i = 0; i < size; i++) {
+                            if (valueLocations[v2][i] != setCells[i]) {
+                                match = false;
+                                break;
+                            }
+                        }
+                        if (match) {
+                            setValues[setCount++] = v2;
+                            if (setCount == size) {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // If we found a hidden set
+                if (setCount == size) {
+                    // Remove other possible values from these cells
+                    for (int i = 0; i < size; i++) {
+                        Cell *cell = &unitCells[setCells[i]];
+                        for (int v = 0; v < 9; v++) {
+                            bool inSet = false;
+                            for (int j = 0; j < size; j++) {
+                                if (v == setValues[j]) {
+                                    inSet = true;
+                                    break;
+                                }
+                            }
+                            if (!inSet && cell->possibleValues[v]) {
+                                cell->possibleValues[v] = false;
+                                updated = true;
+                                printf("Removed %d from cell %d due to hidden %s\n",
+                                       v + 1, setCells[i],
+                                       size == 2 ? "pair" : (size == 3 ? "triplet" : "quad"));
+                            }
                         }
                     }
                 }
@@ -292,6 +323,223 @@ bool hidPairs(Cell unitCells[9]) {
 
     return updated;
 }
+
+
+
+
+bool boxLineReduction(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    for (int boxRow = 0; boxRow < 3; boxRow++) {
+        for (int boxCol = 0; boxCol < 3; boxCol++) {
+            // Track possible values in each row and column of the box
+            bool rowPossibleValues[3][9] = {false}; // 3 rows in the box
+            bool colPossibleValues[3][9] = {false}; // 3 columns in the box
+
+            // Check possible values for each cell in the box
+            for (int subRow = 0; subRow < 3; subRow++) {
+                for (int subCol = 0; subCol < 3; subCol++) {
+                    Cell* cell = &sudoku[boxRow * 3 + subRow][boxCol * 3 + subCol];
+                    if (cell->value == 0) { // Only consider cells with no value
+                        for (int num = 0; num < 9; num++) {
+                            if (cell->possibleValues[num]) {
+                                rowPossibleValues[subRow][num] = true;
+                                colPossibleValues[subCol][num] = true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check rows in the box
+            for (int row = 0; row < 3; row++) {
+                for (int num = 0; num < 9; num++) {
+                    if (rowPossibleValues[row][num]) {
+                        // Check if this number can only be in one row of the box
+                        bool foundInOtherRows = false;
+                        for (int otherRow = 0; otherRow < 3; otherRow++) {
+                            if (otherRow != row && rowPossibleValues[otherRow][num]) {
+                                foundInOtherRows = true;
+                                break;
+                            }
+                        }
+                        if (!foundInOtherRows) {
+                            // Remove this number from all other cells in the same column
+                            for (int col = 0; col < 9; col++) {
+                                if (col / 3 != boxCol) {
+                                    Cell* cell = &sudoku[boxRow * 3 + row][col];
+                                    if (cell->possibleValues[num]) {
+                                        cell->possibleValues[num] = false;
+                                        printf("Removed %d from [%d][%d] due to Box Line Reduction in row %d of box [%d][%d]\n",
+                                               num + 1, boxRow * 3 + row, col, row + 1, boxRow, boxCol);
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Check columns in the box
+            for (int col = 0; col < 3; col++) {
+                for (int num = 0; num < 9; num++) {
+                    if (colPossibleValues[col][num]) {
+                        // Check if this number can only be in one column of the box
+                        bool foundInOtherCols = false;
+                        for (int otherCol = 0; otherCol < 3; otherCol++) {
+                            if (otherCol != col && colPossibleValues[otherCol][num]) {
+                                foundInOtherCols = true;
+                                break;
+                            }
+                        }
+                        if (!foundInOtherCols) {
+                            // Remove this number from all other cells in the same row
+                            for (int row = 0; row < 9; row++) {
+                                if (row / 3 != boxRow) {
+                                    Cell* cell = &sudoku[row][boxCol * 3 + col];
+                                    if (cell->possibleValues[num]) {
+                                        cell->possibleValues[num] = false;
+                                        printf("Removed %d from [%d][%d] due to Box Line Reduction in column %d of box [%d][%d]\n",
+                                               num + 1, row, boxCol * 3 + col, col + 1, boxRow, boxCol);
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return updated;
+}
+
+bool advancedPointing(Cell sudoku[9][9]) {
+    bool updated = false;
+
+    // Iterate through each region (3x3 sub-grids)
+    for (int regRow = 0; regRow < 3; regRow++) {
+        for (int regCol = 0; regCol < 3; regCol++) {
+            for (int posVal = 0; posVal < 9; posVal++) {
+                int rowOccurrences[3] = {0, 0, 0};
+                int colOccurrences[3] = {0, 0, 0};
+                int totalOccurrences = 0;
+
+                // Check occurrences of posVal in the sub-grid
+                for (int subRow = 0; subRow < 3; subRow++) {
+                    for (int subCol = 0; subCol < 3; subCol++) {
+                        Cell* current_cell = &sudoku[regRow * 3 + subRow][regCol * 3 + subCol];
+                        if (current_cell->value == 0 && current_cell->possibleValues[posVal]) {
+                            rowOccurrences[subRow]++;
+                            colOccurrences[subCol]++;
+                            totalOccurrences++;
+                        }
+                    }
+                }
+
+                // Regular pointing (same row or column within a region)
+                for (int i = 0; i < 3; i++) {
+                    if (rowOccurrences[i] == totalOccurrences && totalOccurrences > 1) {
+                        for (int col = 0; col < 9; col++) {
+                            if (col / 3 != regCol) {
+                                if (sudoku[regRow * 3 + i][col].possibleValues[posVal]) {
+                                    printf("\nRemoving posVal %d from [%d][%d] due to regular pointing in row.", posVal + 1, regRow * 3 + i, col);
+                                    sudoku[regRow * 3 + i][col].possibleValues[posVal] = false;
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if (colOccurrences[i] == totalOccurrences && totalOccurrences > 1) {
+                        for (int row = 0; row < 9; row++) {
+                            if (row / 3 != regRow) {
+                                if (sudoku[row][regCol * 3 + i].possibleValues[posVal]) {
+                                    printf("\nRemoving posVal %d from [%d][%d] due to regular pointing in column.", posVal + 1, row, regCol * 3 + i);
+                                    sudoku[row][regCol * 3 + i].possibleValues[posVal] = false;
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Perpendicular pointing (same two rows or columns within a region)
+                if (totalOccurrences > 1) {
+                    int rowPairs = 0;
+                    int colPairs = 0;
+                    for (int i = 0; i < 3; i++) {
+                        if (rowOccurrences[i] > 0) rowPairs++;
+                        if (colOccurrences[i] > 0) colPairs++;
+                    }
+
+                    if (rowPairs == 2) {
+                        int rowsWithPosVal[3] = {-1, -1, -1};
+                        int rowCount = 0;
+                        for (int i = 0; i < 3; i++) {
+                            if (rowOccurrences[i] > 0) rowsWithPosVal[rowCount++] = i;
+                        }
+
+                        for (int col = 0; col < 9; col++) {
+                            if (col / 3 != regCol) {
+                                bool remove = true;
+                                for (int i = 0; i < rowCount; i++) {
+                                    if (sudoku[regRow * 3 + rowsWithPosVal[i]][col].possibleValues[posVal]) {
+                                        remove = false;
+                                        break;
+                                    }
+                                }
+                                if (remove) {
+                                    for (int i = 0; i < rowCount; i++) {
+                                        if (sudoku[regRow * 3 + rowsWithPosVal[i]][col].possibleValues[posVal]) {
+                                            printf("\nRemoving posVal %d from [%d][%d] due to perpendicular pointing in rows.", posVal + 1, regRow * 3 + rowsWithPosVal[i], col);
+                                            sudoku[regRow * 3 + rowsWithPosVal[i]][col].possibleValues[posVal] = false;
+                                            updated = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (colPairs == 2) {
+                        int colsWithPosVal[3] = {-1, -1, -1};
+                        int colCount = 0;
+                        for (int i = 0; i < 3; i++) {
+                            if (colOccurrences[i] > 0) colsWithPosVal[colCount++] = i;
+                        }
+
+                        for (int row = 0; row < 9; row++) {
+                            if (row / 3 != regRow) {
+                                bool remove = true;
+                                for (int i = 0; i < colCount; i++) {
+                                    if (sudoku[row][regCol * 3 + colsWithPosVal[i]].possibleValues[posVal]) {
+                                        remove = false;
+                                        break;
+                                    }
+                                }
+                                if (remove) {
+                                    for (int i = 0; i < colCount; i++) {
+                                        if (sudoku[row][regCol * 3 + colsWithPosVal[i]].possibleValues[posVal]) {
+                                            printf("\nRemoving posVal %d from [%d][%d] due to perpendicular pointing in columns.", posVal + 1, row, regCol * 3 + colsWithPosVal[i]);
+                                            sudoku[row][regCol * 3 + colsWithPosVal[i]].possibleValues[posVal] = false;
+                                            updated = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return updated;
+}
+
 
 void solve(Cell sudoku[9][9]) {
     bool update_made;
@@ -345,25 +593,37 @@ void solve(Cell sudoku[9][9]) {
             }
         }
 
-        // Process hidden pairs/triplets
+        // Process hidden pairs/triplets/quads
         for (int i = 0; i < 9; i++) {
             if (hidPairs(sudoku[i])) update_made = true;      // Row
-            if (hidPairs(sudoku[i][0].colCells)) update_made = true; // Column
-            if (hidPairs(sudoku[i][0].regCells)) update_made = true; // Region
+
+            Cell colCells[9];
+            Cell regCells[9];
+            for (int j = 0; j < 9; j++) {
+                colCells[j] = sudoku[j][i];
+                regCells[j] = sudoku[(i/3)*3 + j/3][(i%3)*3 + j%3];
+            }
+            if (hidPairs(colCells)) {
+                update_made = true;
+                for (int j = 0; j < 9; j++) sudoku[j][i] = colCells[j];
+            }
+            if (hidPairs(regCells)) {
+                update_made = true;
+                for (int j = 0; j < 9; j++) sudoku[(i/3)*3 + j/3][(i%3)*3 + j%3] = regCells[j];
+            }
         }
 
-        /*
+
         // Advanced pointing function
+        /*
         if (advancedPointing(sudoku)) {
             update_made = true;
         }
+         */
+
         if (boxLineReduction(sudoku)) {
             update_made = true;
         }
-        if (xWing(sudoku)) {
-            update_made = true;
-        }
-         */
 
 
         printf("\nUpdate made: %s", update_made ? "true" : "false");

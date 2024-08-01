@@ -840,3 +840,107 @@ bool obvPairs(Cell unitCells[9]){
 
     return updated;
 }
+
+
+
+
+bool hidTuplesHelper(Cell unitCells[9], int size) {
+    bool updated = false;
+    int combinations[84][4] = {{0,1},{0,2},{0,3},{0,4},{0,5},{0,6},{0,7},{0,8},{1,2},{1,3},{1,4},{1,5},{1,6},{1,7},{1,8},{2,3},{2,4},{2,5},{2,6},{2,7},{2,8},{3,4},{3,5},{3,6},{3,7},{3,8},{4,5},{4,6},{4,7},{4,8},{5,6},{5,7},{5,8},{6,7},{6,8},{7,8},
+                               {0,1,2},{0,1,3},{0,1,4},{0,1,5},{0,1,6},{0,1,7},{0,1,8},{0,2,3},{0,2,4},{0,2,5},{0,2,6},{0,2,7},{0,2,8},{0,3,4},{0,3,5},{0,3,6},{0,3,7},{0,3,8},{0,4,5},{0,4,6},{0,4,7},{0,4,8},{0,5,6},{0,5,7},{0,5,8},{0,6,7},{0,6,8},{0,7,8},{1,2,3},{1,2,4},{1,2,5},{1,2,6},{1,2,7},{1,2,8},{1,3,4},{1,3,5},{1,3,6},{1,3,7},{1,3,8},{1,4,5},{1,4,6},{1,4,7},{1,4,8},{1,5,6},{1,5,7},{1,5,8},{1,6,7},{1,6,8},{1,7,8},
+                               {0,1,2,3},{0,1,2,4},{0,1,2,5},{0,1,2,6},{0,1,2,7},{0,1,2,8}};
+    int combCount = (size == 2) ? 36 : (size == 3) ? 84 : 56;
+
+    for (int c = 0; c < combCount; c++) {
+        int digits[4] = {combinations[c][0], combinations[c][1], combinations[c][2], combinations[c][3]};
+        int cellIndices[9] = {0};
+        int cellCount = 0;
+
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < size; j++) {
+                if (unitCells[i].possibleValues[digits[j]]) {
+                    cellIndices[cellCount++] = i;
+                    break;
+                }
+            }
+        }
+
+        if (cellCount == size) {
+            for (int i = 0; i < cellCount; i++) {
+                Cell* cell = &unitCells[cellIndices[i]];
+                for (int v = 0; v < 9; v++) {
+                    bool isInTuple = false;
+                    for (int j = 0; j < size; j++) {
+                        if (v == digits[j]) {
+                            isInTuple = true;
+                            break;
+                        }
+                    }
+                    if (!isInTuple && cell->possibleValues[v]) {
+                        cell->possibleValues[v] = false;
+                        updated = true;
+                        printf("Removed %d from cell in hidden %s\n", v+1, size == 2 ? "pair" : size == 3 ? "triple" : "quad");
+                    }
+                }
+            }
+        }
+    }
+    return updated;
+}
+
+bool hidTuples(Cell unitCells[9]) {
+    bool updated = false;
+    updated |= hidTuplesHelper(unitCells, 2); // pairs
+    updated |= hidTuplesHelper(unitCells, 3); // triples
+    updated |= hidTuplesHelper(unitCells, 4); // quads
+    return updated;
+}
+
+
+bool hidPairs(Cell unitCells[9]) {
+    bool updated = false;
+
+    for (int first = 0; first < 8; first++) {
+        for (int second = first + 1; second < 9; second++) {
+            int count = 0;
+            Cell *pairCells[2] = {NULL, NULL};
+            int pairCount = 0;
+
+            // Find cells where only 'first' and 'second' are possible
+            for (int cellIndex = 0; cellIndex < 9; cellIndex++) {
+                Cell *cell = &unitCells[cellIndex];
+                if (cell->possibleValues[first] && cell->possibleValues[second]) {
+                    // Check that these are the only possibilities for this cell
+                    bool validPair = true;
+                    for (int posVal = 0; posVal < 9; posVal++) {
+                        if (posVal != first && posVal != second && cell->possibleValues[posVal]) {
+                            validPair = false;
+                            break;
+                        }
+                    }
+                    if (validPair) {
+                        if (pairCount < 2) {
+                            pairCells[pairCount++] = cell;
+                        }
+                        count++;
+                    }
+                }
+            }
+
+            if (count == 2 && pairCount == 2) {
+                // We found exactly two cells with this hidden pair, clear other values
+                for (int posVal = 0; posVal < 9; posVal++) {
+                    if (posVal != first && posVal != second) {
+                        if (pairCells[0]->possibleValues[posVal] || pairCells[1]->possibleValues[posVal]) {
+                            pairCells[0]->possibleValues[posVal] = false;
+                            pairCells[1]->possibleValues[posVal] = false;
+                            updated = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return updated;
+}
